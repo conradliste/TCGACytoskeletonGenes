@@ -1,0 +1,104 @@
+---
+title: "TCGAGenes"
+author: "Conrad Li"
+date: "4/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) # metapackage of all tidyverse packages
+library(ggplot2)
+library(tidyr)
+library(TCGAbiolinks)
+library(DT)
+library(MAFDash)
+library(maftools)
+```
+
+# Loading in data
+Although there are 117 in the original dataset there are repeats. There are actually 103 unique ids.
+```{r}
+# Load in the cytoskeleton  Genes
+data<-read.table(file = "cyto.tsv", sep = '\t', header = TRUE)
+data<-as_tibble(data)
+#length(unique(data$Gene))
+data
+```
+# Cleaning data
+Take off the "UnprotKB:" prefix of the uniprot name
+```{r}
+func<-function(x) unlist(strsplit(as.character(x), "UniProtKB:"))[2]
+data<-data.frame(apply(data[1], 1, func), data[2:ncol(data)])
+colnames(data)<-c("Gene", colnames(data)[2:ncol(data)])
+data
+```
+
+Convert uniprot names to standard gene names
+
+```{r}
+# Function that maps uniprot names
+uniprot_mapping <- function(ids) {
+           uri <- 'http://www.uniprot.org/uniprot/?query='
+           idStr <- paste(ids, collapse="+or+")
+           format <- '&format=tab'
+           fullUri <- paste0(uri,idStr,format)
+           print(fullUri)
+           dat <- read.delim(fullUri)
+           dat
+}
+
+# Extract gene name of each uniport gene
+names<-data$Gene
+gene_names<-character(0)
+
+i<-1
+# Find the gene name of each uniprot id
+for (name in names) {
+  uni_df<-uniprot_mapping(name)
+  # filter for the row with the gene name
+  uni_row<-filter(uni_df, uni_df$Entry == name)
+  print(uni_row$Gene.names)
+  gene_names[i]<-uni_row$Gene.names
+  print(gene_names[i])
+  i<-i+1
+}
+```
+# Load in Gene names from file
+```{r}
+#write(data$Gene, file="uniprot_ids", sep ="\n")
+gene_names<-read.csv("cytoskeleton_gene_names.txt", sep="\n")
+gene_names
+```
+# Download Mutation Data from TCGA
+```{r}
+# Grab all TCGA projects
+#projects <- getGDCprojects()
+#acc.muse.maf <- GDCquery_Maf("NBL", pipelines = "muse")
+colClasses<-rep("NULL", 114)
+# 1 2 4 9 10 11 12 33 34 36 46 47 55
+colClasses[c(1, 5, 6, 7, 9, 10, 11, 12, 13, 16, 17,35, 36, 53, 54 ,55)]<-NA
+maf<-read.csv("mc3.v0.2.8.PUBLIC.maf", sep="\t", nrows=5)
+maf
+#maf<-read.csv("mc3.v0.2.8.PUBLIC.maf", sep="\t", colClasses=colClasses)
+#write.csv(maf, "m3maf_sparse.csv")
+#cyto<-filter(maf, maf$Hugo_Symbol %in% gene_names$Gene_name)
+#write.csv(cyto, "cyto_sparse.csv")
+```
+# Load and Analyze Data
+```{r}
+# Load into cyto gene data
+cyto<-read.csv("cyto_sparse.csv", nrows=1)
+cyto[1]<-NULL
+cyto
+# Rename the sample, gene, and variant_class columns
+#cyto<-cyto %>% rename(gene = Hugo_Symbol, sample = Tumor_Sample_Barcode, variant_class = Variant_Classification)
+#cyto
+#mut<-select(cyto,  gene, sample, variant_class)
+#mutation_priority <- as.character(unique(cyto$variant_class))
+#plt<-waterfall(mut, fileType = "Custom", variant_class_order=mutation_priority, mainXlabel=TRUE)
+```
+
+```{r}
+generateOncoPlot(read.maf(cyto))
+```
